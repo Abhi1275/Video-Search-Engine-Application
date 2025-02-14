@@ -1,5 +1,3 @@
-# PolyVideo-Search-Engine-Application
-This project is part of the CSL4030 Data Engineering course and is a group effort aimed at building a comprehensive video search engine application with a Graphical User Interface (GUI).
 # Polysearch-video-hub
 
 
@@ -24,3 +22,6 @@ o Current Video Panel (CVP)
 **Below is the Demo Video Link regarding the project,have a look at it**
 
 https://drive.google.com/file/d/1ydl5_YGAUWFaqtuhKYY5QorUMlWo1iZo/view?usp=drive_link
+
+
+

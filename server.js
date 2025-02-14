@@ -1,25 +1,37 @@
 // requiring mongoose
+var mysql = require('mysql2');
 const mongoose=require("mongoose");
 const express=require('express');
 const app=express();
-const bcrypt = require("bcrypt");
 const bodyparser=require('body-parser');
 app.use(bodyparser.urlencoded({extended:true}));
 const cors = require("cors");
 app.use(cors());
 
-app.listen(3000,function(){
-    console.log("Hello");
+app.listen(3500,function(){
 })
 
 // app.get("/",function(req,res){
-//     console.log(__dirname);
 //     res.sendFile(__dirname+"/index.html")
 // });
 
 // connecting to database and creating database name fruitsdb
 
 mongoose.connect("mongodb://127.0.0.1:27017/project");
+
+const videoCommentSchema = new mongoose.Schema({
+  videoId: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  comments: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
+});
 
 // creating schema
 
@@ -75,29 +87,6 @@ const videoInfoSchema = new mongoose.Schema({
 }},{collection: 'test'});
 
 
-const userSchema = new mongoose.Schema({
-    user_id: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-    password: {
-      type: String,
-      required: true,
-    },
-  });
-  
-  // Create a user model
-  const User = mongoose.model('User', userSchema);
-
-
 // creating model with collection name Fruit and which will stick to fruitSchema
 //mongoose automatically converts singular to plural collection name here the string is collection name
 
@@ -105,7 +94,7 @@ const userSchema = new mongoose.Schema({
 const Fruit=mongoose.model("test",videoInfoSchema);
 
 
-
+const Comment=mongoose.model("comment",videoCommentSchema);
 
 
 
@@ -121,19 +110,59 @@ app.post("/",function(req,res){
         final=(await findd(req.body.f))
         
     // res.send(req.body.f+" "+req.body.s)
-    // console.log("final "+ x);
     res.send(final);
     
       })()
     
    
 })
+app.get('/addcomment', async (req, res) => {
+  const searchText = req.query.text;
+  
 
+  try {
+    // Use findOne to find a single document based on the videoId
+    const result = await Comment.findOne({ videoId:searchText });
+
+    if (result) {
+      console.log('Comments for videoId:', result);
+      // console.log(result.comments);
+    } else {
+      console.log('No comments found for videoId:', searchText);
+    }
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+app.get('/comment', async (req, res) => {
+  const searchText = req.query.text;
+  const valuesArray = searchText.split(',');
+
+  try {
+    // Use findOneAndUpdate to find a document by videoId and update it
+    console.log(searchText);
+    const result = await Comment.findOneAndUpdate(
+      {videoId: valuesArray[0] },
+      { $push: { comments: valuesArray[1] } },
+      { upsert: true, new: true } // Creates a new document if not found, returns the updated document
+    );
+
+    if (result) {
+      console.log('Comment added:', result);
+    } else {
+      console.log('Video not found for videoId:', videoId);
+    }
+  }catch (error) {
+    console.error(error);
+    res.status(500).send('Internal Server Error');
+  }
+});
 app.use(bodyparser.json());
 
 app.get('/video/search/', async (req, res) => {
     const searchText = req.query.text;
-    console.log(searchText);
   
     try {
         const foundVideos =await Fruit.find( {$text: { $search: searchText } });
@@ -144,70 +173,169 @@ app.get('/video/search/', async (req, res) => {
       res.status(500).send('Internal Server Error');
     }
   });
-
-  app.post('/register', async (req, res) => {
-    const { user_id, email, password } = req.body;
+  app.get('/increase', async (req, res) => {
+    const videoId = req.query.text; // Assuming text parameter contains the video ID
+    const valuesArray = videoId.split(',');
+    const isLiked=valuesArray[1];
   
     try {
-      // Check if the user with the given user_id or email already exists
-      const existingUser = await User.findOne({ $or: [{ user_id }, { email }] });
-  
-      if (existingUser) {
-        return res.status(400).json({ error: 'User already exists with the provided user_id or email.' });
-      }
-  
-      // Hash the password before storing it
-      const hashedPassword = await bcrypt.hash(password, 10);
-  
-      // Create a new user
-      const newUser = new User({
-        user_id,
-        email,
-        password: hashedPassword,
-      });
-  
-      // Save the user to the database
-      await newUser.save();
-  
-      res.status(201).json({ message: 'User registered successfully.' });
+        // Find the video by ID and update its likeCount
+        const query = { 'videoInfo.id': valuesArray[0] };
+
+        // Fetch the document and convert likeCount to a number
+        const video = await Fruit.findOne(query);
+        const currentLikeCount = parseInt(video.videoInfo.statistics.likeCount);
+
+        // Update the document with the incremented likeCount
+        var updatedVideo;
+        // if(isLiked=='true'){
+        const update = { $set: { 'videoInfo.statistics.likeCount': currentLikeCount +1 } };
+        const options = { new: true };
+        updatedVideo = await Fruit.findOneAndUpdate(query, update, options);
+        // }
+        // else if(isLiked=='false'){
+        //   const update = { $set: { 'videoInfo.statistics.likeCount': currentLikeCount -1 } };
+        // const options = { new: true };
+        // updatedVideo = await Fruit.findOneAndUpdate(query, update, options);
+        // }
+
+        // Perform the update
+        
+
+        if (updatedVideo) {
+            res.json(updatedVideo);
+        } else {
+            res.status(404).json({ error: 'Video not found' });
+        }
     } catch (error) {
-      console.error('Error registering user:', error);
-      res.status(500).json({ error: 'Internal Server Error' });
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+app.get('/decrease', async (req, res) => {
+  const videoId = req.query.text; // Assuming text parameter contains the video ID
+
+  try {
+      // Find the video by ID and update its likeCount
+      const query = { 'videoInfo.id': videoId };
+
+      // Fetch the document and convert likeCount to a number
+      const video = await Fruit.findOne(query);
+      const currentLikeCount = parseInt(video.videoInfo.statistics.dislikeCount);
+
+      // Update the document with the incremented likeCount
+      const update = { $set: { 'videoInfo.statistics.dislikeCount': currentLikeCount + 1 } };
+      const options = { new: true };
+
+      // Perform the update
+      const updatedVideo = await Fruit.findOneAndUpdate(query, update, options);
+
+      if (updatedVideo) {
+          res.json(updatedVideo);
+      } else {
+          res.status(404).json({ error: 'Video not found' });
+      }
+  } catch (error) {
+      console.error(error);
+      res.status(500).send('Internal Server Error');
+  }
+});
+  app.get('/recommend', async (req, res) => {
+    const searchText = req.query.text;
+    const valuesArray = searchText.split(',');
+    console.log(searchText);
+  
+    try {
+      
+      const uniqueValues = new Set(valuesArray);
+const ans = [];
+
+for (const value of uniqueValues) {
+  const foundVideos = await Fruit.find({ $text: { $search: value } });
+  
+  // Filter out duplicate videos based on videoInfo.id
+  // const uniqueVideos = foundVideos.filter((video, index, self) =>
+  //     index === self.findIndex((v) => (
+  //         v.videoInfo.id === video.videoInfo.id
+  //     ))
+  // );
+
+  ans.push(foundVideos.slice(0, 8));
+}
+// Flatten the array and convert it to a Set to get unique values
+// const unique = [...new Set(ans.flat())];
+
+// Create a new array based on unique videoInfo.id
+// const newArray = unique.map(video => video.videoInfo.id);
+
+console.log(ans);
+// const unique = [...new Set(ans.flat())];
+
+res.json(ans);
+    } catch (error) {
+      console.error(error);
+      res.status(500).send('Internal Server Error');
     }
   });
 
-  app.post('/login', async (req, res) => {
-    const { user_id, password } = req.body;
-  
-    try {
-      // Find the user by user_id
-      const user = await User.findOne({ user_id });
-  
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid user_id or password.' });
-      }
-  
-      // Compare the provided password with the hashed password stored in the database
-      const passwordMatch = await bcrypt.compare(password, user.password);
-  
-      if (!passwordMatch) {
-        return res.status(401).json({ error: 'Invalid user_id or password.' });
-      }
-  
-      res.status(200).json({ message: 'Login successful.' });
-    } catch (error) {
-      console.error('Error logging in:', error);
-      res.status(500).json({ error: 'Internal Server Error' });
-    }
+  const db = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: 'debesh1234',
+    database: 'clickdb'
   });
+  app.get('/searchsqlclick', (req, res) => {
+    const userIdToSearch = req.query.text;
+  
+    // Perform the search query with sorting by timestamp
+    const searchQuery = 'SELECT * FROM click_through_log WHERE user_id = ? ORDER BY timestamp DESC';
+  
+    // Use the connection pool to execute the query
+    db.query(searchQuery, [userIdToSearch], (err, results) => {
+      if (err) {
+        console.error('Error executing search query:', err);
+        res.status(500).send('Internal Server Error');
+        return;
+      }
+  
+      // Send the sorted results back to the frontend
+      
+      res.json(results);
+    });
+});
 
+  app.get('/insertClick', (req, res) => {
+    const received= req.query.text;
+    // const videoId = 3; // replace with the actual video ID
+    // const ranking = 5; // replace with the actual ranking
+    // const userId = 123; // replace with the actual user ID
+    // const concatenatedString = 'debesh1,3,5,123';
 
+// Split the string by commas
+const valuesArray = received.split(',');
+
+// Extract values separately
+const searchQuery = valuesArray[0];
+const videoId = valuesArray[1]; // Convert to integer
+const ranking = parseInt(valuesArray[2], 10); // Convert to integer
+const userId = parseInt(valuesArray[3], 10); // Convert to integer
+const link=valuesArray[4];
+const title=valuesArray[5];
+const videoLink = `https://www.youtube.com/watch?v=${videoId}`;
+    const sql = "INSERT INTO click_through_log (search_query, video_id, ranking, user_id,thumbnail_link,video_title) VALUES (?, ?, ?, ?,?,?)";
+    db.query(sql, [searchQuery, videoLink, ranking, userId,link,title], (err, result) => {
+      if (err) {
+        console.error('Error inserting click-through information:', err);
+        res.status(500).send('Internal Server Error');
+      } else {
+        res.status(200).send('Inserted Successfully');
+      }
+    });
+  });
 async function findd(a){
     const x=await Fruit.find( {$text: { $search: "The Bengali BadAss Song" } });
     
-    console.log(flag);
     return await x;
-    // console.log(x)
 }
 
 
